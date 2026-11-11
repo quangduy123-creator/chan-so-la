@@ -32,7 +32,6 @@ class CallBlockerService : CallScreeningService() {
             .build()
         respondToCall(details, response)
 
-        BlockLog.add(this, "CALL", number ?: "Số ẩn danh", "Đã chặn cuộc gọi")
         CallLogCleaner.scheduleCleanup(applicationContext, number)
     }
 }

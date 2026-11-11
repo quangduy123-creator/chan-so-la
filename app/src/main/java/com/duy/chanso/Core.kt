@@ -9,8 +9,6 @@ import android.os.Looper
 import android.provider.CallLog
 import android.provider.ContactsContract
 import android.telephony.PhoneNumberUtils
-import org.json.JSONArray
-import org.json.JSONObject
 
 /** Cài đặt người dùng */
 class Prefs(ctx: Context) {
@@ -31,6 +29,11 @@ class Prefs(ctx: Context) {
     var tryDelete: Boolean
         get() = sp.getBoolean("tryDelete", false)
         set(v) { sp.edit().putBoolean("tryDelete", v).apply() }
+
+    /** -1 chưa biết, 0 app Tin nhắn còn kêu, 1 đã để Im lặng (do SmsFilterService ghi nhận) */
+    var smsChannelSilent: Int
+        get() = sp.getInt("smsSilent", -1)
+        set(v) { sp.edit().putInt("smsSilent", v).apply() }
 
     var whitelistRaw: String
         get() = sp.getString("whitelist", "") ?: ""
@@ -85,28 +88,6 @@ object ContactChecker {
     /** App SMS hiển thị tên danh bạ nếu số đã lưu, ngược lại hiển thị số hoặc brandname */
     fun isKnownSender(ctx: Context, sender: String): Boolean =
         if (looksLikeNumber(sender)) isKnownNumber(ctx, sender) else isKnownName(ctx, sender)
-}
-
-/** Nhật ký các cuộc gọi / tin nhắn đã chặn (lưu tối đa 300 mục) */
-object BlockLog {
-    private const val MAX = 300
-    private fun sp(ctx: Context) = ctx.getSharedPreferences("log", Context.MODE_PRIVATE)
-
-    @Synchronized
-    fun add(ctx: Context, type: String, who: String, detail: String) {
-        val old = all(ctx)
-        val out = JSONArray()
-        out.put(JSONObject().put("t", System.currentTimeMillis()).put("type", type).put("who", who).put("detail", detail))
-        old.take(MAX - 1).forEach { out.put(it) }
-        sp(ctx).edit().putString("items", out.toString()).apply()
-    }
-
-    fun all(ctx: Context): List<JSONObject> = try {
-        val arr = JSONArray(sp(ctx).getString("items", "[]"))
-        (0 until arr.length()).map { arr.getJSONObject(it) }
-    } catch (e: Exception) { emptyList() }
-
-    fun clear(ctx: Context) { sp(ctx).edit().remove("items").apply() }
 }
 
 /** Dự phòng: xoá lịch sử cuộc gọi (một số máy vẫn ghi log dù đã yêu cầu bỏ qua) */
