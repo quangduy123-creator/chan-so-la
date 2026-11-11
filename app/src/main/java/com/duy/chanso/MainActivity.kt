@@ -3,9 +3,7 @@ package com.duy.chanso
 import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
-import android.app.NotificationManager
 import android.app.role.RoleManager
-import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
@@ -13,7 +11,6 @@ import android.graphics.Typeface
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
-import android.provider.Telephony
 import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
@@ -53,26 +50,17 @@ class MainActivity : Activity() {
         root.addView(header("1. Thiết lập (làm 1 lần)"))
         statusView = TextView(this).apply { textSize = 14f; setPadding(0, dp(4), 0, dp(8)); setLineSpacing(0f, 1.2f) }
         root.addView(statusView)
-        root.addView(button("Cấp quyền Danh bạ, Nhật ký cuộc gọi, Thông báo") { requestBasicPermissions() })
+        root.addView(button("Cấp quyền Danh bạ & Nhật ký cuộc gọi") { requestBasicPermissions() })
         root.addView(button("Đặt làm app chặn cuộc gọi") { requestCallScreeningRole() })
-        root.addView(button("Bật quyền đọc thông báo") {
-            startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
-        })
-        root.addView(button("Để thông báo app Tin nhắn ở chế độ Im lặng") { openSmsAppNotificationSettings() })
-        root.addView(note("Ở màn hình mở ra: chọn mục thông báo tin nhắn đến → chọn \"Im lặng\". KHÔNG tắt hẳn thông báo. " +
-            "Sau đó tin từ danh bạ sẽ do app này báo chuông, tin từ số lạ sẽ không kêu và không hiện."))
 
         root.addView(header("2. Tuỳ chọn"))
         root.addView(toggle("Chặn cuộc gọi không có trong danh bạ", prefs.blockCalls) { prefs.blockCalls = it })
-        root.addView(toggle("Ẩn tin nhắn không có trong danh bạ", prefs.hideSms) { prefs.hideSms = it })
-        root.addView(toggle("Tự đánh dấu tin lạ là đã đọc", prefs.markRead) { prefs.markRead = it })
-        root.addView(toggle("Thử xoá tin lạ (chỉ khi app SMS có nút Xoá trên thông báo)", prefs.tryDelete) { prefs.tryDelete = it })
 
         root.addView(header("3. Danh sách cho phép"))
-        root.addView(note("Số hoặc tên người gửi chứa từ khoá dưới đây sẽ KHÔNG bị chặn (ngân hàng gửi OTP, Grab, GHN...). Cách nhau bằng dấu phẩy."))
+        root.addView(note("Số điện thoại chứa các số dưới đây sẽ KHÔNG bị chặn (VD: tổng đài 1900, 1800). Cách nhau bằng dấu phẩy."))
         val wl = EditText(this).apply {
             setText(prefs.whitelistRaw)
-            hint = "VD: Vietcombank, Techcombank, Grab, 1900"
+            hint = "VD: 1900, 1800"
             minLines = 2
         }
         root.addView(wl)
@@ -123,26 +111,12 @@ class MainActivity : Activity() {
     private fun refreshStatus() {
         val contacts = checkSelfPermission(Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
         val callLog = CallLogCleaner.canWrite(this)
-        val notif = getSystemService(NotificationManager::class.java)?.areNotificationsEnabled() == true &&
-            (Build.VERSION.SDK_INT < 33 ||
-                checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED)
         val role = getSystemService(RoleManager::class.java)?.isRoleHeld(RoleManager.ROLE_CALL_SCREENING) == true
-        val listener = getSystemService(NotificationManager::class.java)
-            ?.isNotificationListenerAccessGranted(ComponentName(this, SmsFilterService::class.java)) == true
-        val silent = when (prefs.smsChannelSilent) {
-            1 -> "✅ App Tin nhắn đang Im lặng"
-            0 -> "❌ App Tin nhắn vẫn đang kêu (tin lạ vẫn có thể kêu 1 tiếng)"
-            else -> "⏳ App Tin nhắn: chưa xác định (sẽ cập nhật khi có tin mới)"
-        }
-
         fun mark(ok: Boolean) = if (ok) "✅" else "❌"
         statusView.text = buildString {
             appendLine("${mark(contacts)} Quyền đọc danh bạ")
             appendLine("${mark(role)} App chặn cuộc gọi")
-            appendLine("${mark(listener)} Quyền đọc thông báo")
-            appendLine("${mark(notif)} Quyền gửi thông báo")
-            appendLine("${mark(callLog)} Quyền nhật ký cuộc gọi (tuỳ chọn)")
-            append(silent)
+            append("${mark(callLog)} Quyền nhật ký cuộc gọi (để dọn lịch sử)")
         }
     }
 
@@ -152,7 +126,6 @@ class MainActivity : Activity() {
             Manifest.permission.READ_CALL_LOG,
             Manifest.permission.WRITE_CALL_LOG
         )
-        if (Build.VERSION.SDK_INT >= 33) perms.add(Manifest.permission.POST_NOTIFICATIONS)
         requestPermissions(perms.toTypedArray(), 1)
     }
 
@@ -167,16 +140,6 @@ class MainActivity : Activity() {
             return
         }
         startActivityForResult(rm.createRequestRoleIntent(RoleManager.ROLE_CALL_SCREENING), 2)
-    }
-
-    private fun openSmsAppNotificationSettings() {
-        val pkg = Telephony.Sms.getDefaultSmsPackage(this)
-        val intent = if (pkg != null) {
-            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, pkg)
-        } else {
-            Intent(Settings.ACTION_SETTINGS)
-        }
-        try { startActivity(intent) } catch (e: Exception) { startActivity(Intent(Settings.ACTION_SETTINGS)) }
     }
 
     @Deprecated("Deprecated in Java")

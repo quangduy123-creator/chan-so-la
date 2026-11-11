@@ -18,23 +18,6 @@ class Prefs(ctx: Context) {
         get() = sp.getBoolean("blockCalls", true)
         set(v) { sp.edit().putBoolean("blockCalls", v).apply() }
 
-    var hideSms: Boolean
-        get() = sp.getBoolean("hideSms", true)
-        set(v) { sp.edit().putBoolean("hideSms", v).apply() }
-
-    var markRead: Boolean
-        get() = sp.getBoolean("markRead", true)
-        set(v) { sp.edit().putBoolean("markRead", v).apply() }
-
-    var tryDelete: Boolean
-        get() = sp.getBoolean("tryDelete", false)
-        set(v) { sp.edit().putBoolean("tryDelete", v).apply() }
-
-    /** -1 chưa biết, 0 app Tin nhắn còn kêu, 1 đã để Im lặng (do SmsFilterService ghi nhận) */
-    var smsChannelSilent: Int
-        get() = sp.getInt("smsSilent", -1)
-        set(v) { sp.edit().putInt("smsSilent", v).apply() }
-
     var whitelistRaw: String
         get() = sp.getString("whitelist", "") ?: ""
         set(v) { sp.edit().putString("whitelist", v).apply() }
@@ -68,26 +51,6 @@ object ContactChecker {
         } catch (e: Exception) { true }
     }
 
-    fun isKnownName(ctx: Context, name: String): Boolean {
-        if (!hasPermission(ctx)) return true
-        return try {
-            ctx.contentResolver.query(
-                ContactsContract.Contacts.CONTENT_URI,
-                arrayOf(ContactsContract.Contacts._ID),
-                "${ContactsContract.Contacts.DISPLAY_NAME_PRIMARY} = ?",
-                arrayOf(name), null
-            )?.use { it.count > 0 } ?: false
-        } catch (e: Exception) { true }
-    }
-
-    fun looksLikeNumber(s: String): Boolean {
-        val digits = s.count { it.isDigit() }
-        return digits >= 3 && s.all { it.isDigit() || it in "+-() ." }
-    }
-
-    /** App SMS hiển thị tên danh bạ nếu số đã lưu, ngược lại hiển thị số hoặc brandname */
-    fun isKnownSender(ctx: Context, sender: String): Boolean =
-        if (looksLikeNumber(sender)) isKnownNumber(ctx, sender) else isKnownName(ctx, sender)
 }
 
 /** Dự phòng: xoá lịch sử cuộc gọi (một số máy vẫn ghi log dù đã yêu cầu bỏ qua) */
