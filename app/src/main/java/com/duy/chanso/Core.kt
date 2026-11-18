@@ -18,6 +18,10 @@ class Prefs(ctx: Context) {
         get() = sp.getBoolean("blockCalls", true)
         set(v) { sp.edit().putBoolean("blockCalls", v).apply() }
 
+    var blockSms: Boolean
+        get() = sp.getBoolean("blockSms", true)
+        set(v) { sp.edit().putBoolean("blockSms", v).apply() }
+
     var whitelistRaw: String
         get() = sp.getString("whitelist", "") ?: ""
         set(v) { sp.edit().putString("whitelist", v).apply() }
@@ -51,6 +55,45 @@ object ContactChecker {
         } catch (e: Exception) { true }
     }
 
+    private val nameCache = HashMap<String, String?>()
+
+    /** Tên trong danh bạ (null nếu không có) */
+    fun displayName(ctx: Context, number: String?): String? {
+        if (number.isNullOrBlank() || !hasPermission(ctx)) return null
+        synchronized(nameCache) { if (nameCache.containsKey(number)) return nameCache[number] }
+        val uri = Uri.withAppendedPath(ContactsContract.PhoneLookup.CONTENT_FILTER_URI, Uri.encode(number))
+        val name = try {
+            ctx.contentResolver.query(uri, arrayOf(ContactsContract.PhoneLookup.DISPLAY_NAME), null, null, null)
+                ?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
+        } catch (e: Exception) { null }
+        synchronized(nameCache) { nameCache[number] = name }
+        return name
+    }
+
+    fun clearCache() { synchronized(nameCache) { nameCache.clear() } }
+}
+
+/** Quy tắc lọc tin nhắn */
+object SenderRule {
+    /**
+     * Số cá nhân = số điện thoại thường (0xxx…, +84…, số nước ngoài).
+     * KHÔNG phải số cá nhân: brandname có chữ (VCB, GHN, Shopee…) và đầu số dịch vụ ≤ 8 chữ số (9029, 1900xxxx, 8xxx…).
+     */
+    fun isPersonalNumber(address: String): Boolean {
+        if (address.any { it.isLetter() }) return false
+        val digits = address.count { it.isDigit() }
+        return digits > 8
+    }
+
+    /** true = bỏ tin này (không lưu, không báo) */
+    fun shouldBlockSms(ctx: Context, address: String?, ignoreToggle: Boolean = false): Boolean {
+        if (address.isNullOrBlank()) return false
+        val p = Prefs(ctx)
+        if (!ignoreToggle && !p.blockSms) return false
+        if (!isPersonalNumber(address)) return false
+        if (p.isWhitelisted(address)) return false
+        return !ContactChecker.isKnownNumber(ctx, address)
+    }
 }
 
 /** Dự phòng: xoá lịch sử cuộc gọi (một số máy vẫn ghi log dù đã yêu cầu bỏ qua) */
