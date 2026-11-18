@@ -16,7 +16,19 @@ class CleanerService : AccessibilityService() {
 
     companion object {
         const val GM = "com.google.android.apps.messaging"
-        private val DELETE_WORDS = listOf("xóa", "xoá", "delete")
+        private val DELETE_KEYS = listOf("xoa", "delete", "trash", "remove")
+
+        /** Bỏ dấu + chữ thường: "Xóa" / "Xoá" / "XÓA" -> "xoa" */
+        fun plain(s: CharSequence?): String {
+            if (s == null) return ""
+            val n = java.text.Normalizer.normalize(s.toString(), java.text.Normalizer.Form.NFD)
+            return n.replace(Regex("\\p{Mn}+"), "").replace('đ', 'd').replace('Đ', 'D').lowercase().trim()
+        }
+
+        fun isDeleteLabel(s: CharSequence?): Boolean {
+            val p = plain(s)
+            return p.isNotEmpty() && DELETE_KEYS.any { p == it || p.startsWith("$it ") || p.contains(it) && p.length <= 24 }
+        }
         private const val MAX_PER_SESSION = 40
     }
 
@@ -46,7 +58,7 @@ class CleanerService : AccessibilityService() {
         if (!p.autoClean || !p.blockSms) return
         if (busy || scheduled) return
         scheduled = true
-        handler.postDelayed({ scheduled = false; scan() }, 600)
+        handler.postDelayed({ scheduled = false; scan() }, 300)
     }
 
     private fun root(): AccessibilityNodeInfo? =
@@ -61,15 +73,16 @@ class CleanerService : AccessibilityService() {
         if (!row.performAction(AccessibilityNodeInfo.ACTION_LONG_CLICK)) {
             markFailed(number); finish(false); return
         }
-        handler.postDelayed({ clickDelete(number) }, 500)
+        handler.postDelayed({ clickDelete(number) }, 350)
     }
 
     // ---------- Bước 2: bấm nút Xoá trên thanh công cụ ----------
     private fun clickDelete(number: String) {
         val r = root() ?: return finish(false)
         val btn = findAll(r) { n ->
-            val d = n.contentDescription?.toString()?.lowercase()?.trim() ?: return@findAll false
-            DELETE_WORDS.any { d == it || d.startsWith("$it ") }
+            isDeleteLabel(n.contentDescription) ||
+                isDeleteLabel(n.tooltipText) ||
+                (n.viewIdResourceName?.lowercase()?.let { it.contains("delete") || it.contains("trash") } == true)
         }.firstOrNull()
         if (btn == null) {
             markFailed(number)
@@ -77,15 +90,15 @@ class CleanerService : AccessibilityService() {
             return finish(false)
         }
         clickableOf(btn)?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-        handler.postDelayed({ confirm(number) }, 500)
+        handler.postDelayed({ confirm(number) }, 350)
     }
 
     // ---------- Bước 3: xác nhận trong hộp thoại ----------
     private fun confirm(number: String) {
         val r = rootInActiveWindow ?: return finish(false)
         val btn = findAll(r) { n ->
-            val t = n.text?.toString()?.lowercase()?.trim() ?: return@findAll false
-            DELETE_WORDS.contains(t)
+            val t = plain(n.text)
+            t == "xoa" || t == "delete" || t == "xoa cuoc tro chuyen"
         }.lastOrNull()
         if (btn == null) {
             // Có máy xoá luôn không hỏi lại; nếu chưa xoá được thì lần quét sau sẽ bỏ qua sau 2 lần thử
@@ -101,7 +114,7 @@ class CleanerService : AccessibilityService() {
 
     private fun finish(rescan: Boolean) {
         busy = false
-        if (rescan) handler.postDelayed({ scan() }, 700)
+        if (rescan) handler.postDelayed({ scan() }, 400)
     }
 
     private fun markFailed(number: String) { failed[number] = (failed[number] ?: 0) + 1 }
