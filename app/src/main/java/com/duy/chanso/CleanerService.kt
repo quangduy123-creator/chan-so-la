@@ -30,6 +30,12 @@ class CleanerService : AccessibilityService() {
             return p.isNotEmpty() && DELETE_KEYS.any { p == it || p.startsWith("$it ") || p.contains(it) && p.length <= 24 }
         }
         private const val MAX_PER_SESSION = 40
+
+        /** Nút xác nhận trong hộp thoại (so khớp CHÍNH XÁC để không bấm nhầm tiêu đề / nút Huỷ) */
+        private val CONFIRM_LABELS = setOf(
+            "chuyen vao thung rac", "xoa", "xoa cuoc tro chuyen", "xoa vinh vien",
+            "move to trash", "delete", "delete conversation"
+        )
     }
 
     private val handler = Handler(Looper.getMainLooper())
@@ -98,7 +104,7 @@ class CleanerService : AccessibilityService() {
         val r = rootInActiveWindow ?: return finish(false)
         val btn = findAll(r) { n ->
             val t = plain(n.text)
-            t == "xoa" || t == "delete" || t == "xoa cuoc tro chuyen"
+            t in CONFIRM_LABELS
         }.lastOrNull()
         if (btn == null) {
             // Có máy xoá luôn không hỏi lại; nếu chưa xoá được thì lần quét sau sẽ bỏ qua sau 2 lần thử
