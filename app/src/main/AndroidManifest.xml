@@ -16,7 +16,7 @@
 
     <application
         android:allowBackup="false"
-        android:icon="@android:drawable/sym_action_chat"
+        android:icon="@mipmap/ic_launcher"
         android:label="Tin nhắn"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
 
@@ -49,9 +49,13 @@
             </intent-filter>
         </activity>
 
+        <activity android:name=".SettingsActivity" android:exported="false" />
+        <activity android:name=".MenuActivity" android:exported="false" />
+        <activity android:name=".BlockedActivity" android:exported="false" />
         <activity
-            android:name=".SettingsActivity"
-            android:exported="false" />
+            android:name=".SearchActivity"
+            android:exported="false"
+            android:windowSoftInputMode="stateVisible|adjustResize" />
 
         <!-- Nhận SMS (chỉ app mặc định) -->
         <receiver

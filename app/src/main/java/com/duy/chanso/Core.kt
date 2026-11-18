@@ -22,6 +22,10 @@ class Prefs(ctx: Context) {
         get() = sp.getBoolean("blockSms", true)
         set(v) { sp.edit().putBoolean("blockSms", v).apply() }
 
+    var keepBlocked: Boolean
+        get() = sp.getBoolean("keepBlocked", false)
+        set(v) { sp.edit().putBoolean("keepBlocked", v).apply() }
+
     var whitelistRaw: String
         get() = sp.getString("whitelist", "") ?: ""
         set(v) { sp.edit().putString("whitelist", v).apply() }

@@ -73,6 +73,11 @@ object SmsRepo {
         } catch (e: Exception) { }
     }
 
+    fun markAllRead(ctx: Context) {
+        val v = ContentValues().apply { put(Sms.READ, 1); put(Sms.SEEN, 1) }
+        try { ctx.contentResolver.update(Sms.CONTENT_URI, v, "${Sms.READ} = 0", null) } catch (e: Exception) { }
+    }
+
     fun deleteThread(ctx: Context, threadId: Long) {
         try {
             ctx.contentResolver.delete(Uri.withAppendedPath(Sms.Conversations.CONTENT_URI, threadId.toString()), null, null)

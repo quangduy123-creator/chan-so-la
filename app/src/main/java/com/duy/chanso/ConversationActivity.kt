@@ -1,23 +1,28 @@
 package com.duy.chanso
 
+import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
 import android.database.ContentObserver
 import android.graphics.Color
-import android.graphics.drawable.GradientDrawable
+import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.ContactsContract
 import android.provider.Telephony
 import android.text.InputType
+import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
-import android.widget.Button
 import android.widget.EditText
+import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.PopupMenu
 import android.widget.ScrollView
 import android.widget.TextView
+import java.util.Calendar
 
 /** Màn hình chat 1 cuộc trò chuyện (hoặc soạn tin mới nếu chưa có người nhận) */
 class ConversationActivity : BaseActivity() {
@@ -40,6 +45,7 @@ class ConversationActivity : BaseActivity() {
     private lateinit var input: EditText
     private lateinit var toRow: LinearLayout
     private lateinit var toField: EditText
+    private lateinit var header: LinearLayout
     private var observing = false
 
     private val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
@@ -62,25 +68,34 @@ class ConversationActivity : BaseActivity() {
         if (threadId < 0 && address.isNotBlank() && isDefaultSms()) threadId = SmsRepo.threadIdFor(this, address)
 
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        root.addView(topBar(titleText(), true))
+
+        header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(4), dp(4), dp(4), dp(4))
+        }
+        root.addView(header)
+        buildHeader()
 
         // Ô nhập người nhận (khi soạn tin mới)
         toRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(16), 0, dp(8), dp(4))
+            setPadding(dp(20), 0, dp(8), dp(4))
         }
+        toRow.addView(text("Đến", 16f, TEXT2))
         toField = EditText(this).apply {
-            hint = "Số điện thoại"
+            hint = "Nhập tên hoặc số điện thoại"
             inputType = InputType.TYPE_CLASS_PHONE
+            textSize = 16f
+            background = null
+            setPadding(dp(12), dp(12), dp(8), dp(12))
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
         toRow.addView(toField)
         toRow.addView(textButton("Danh bạ") {
             @Suppress("DEPRECATION")
-            startActivityForResult(
-                Intent(Intent.ACTION_PICK, ContactsContract.CommonDataKinds.Phone.CONTENT_URI), REQ_PICK
-            )
+            startActivityForResult(Intent(Intent.ACTION_PICK, ContactsContract.CommonDataKinds.Phone.CONTENT_URI), REQ_PICK)
         })
         toRow.visibility = if (address.isBlank()) View.VISIBLE else View.GONE
         root.addView(toRow)
@@ -100,37 +115,80 @@ class ConversationActivity : BaseActivity() {
         val bottom = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(12), dp(6), dp(8), dp(6))
+            setPadding(dp(12), dp(6), dp(10), dp(10))
         }
         input = EditText(this).apply {
-            hint = "Nhắn tin"
+            hint = "Tin nhắn văn bản"
+            textSize = 16f
             maxLines = 5
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or
                 InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
-            background = GradientDrawable().apply { cornerRadius = dp(22).toFloat(); setColor(GRAY_BG) }
-            setPadding(dp(16), dp(10), dp(16), dp(10))
+            background = rounded(GRAY_BG, 26)
+            setPadding(dp(20), dp(13), dp(20), dp(13))
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
         prefill?.let { input.setText(it) }
         bottom.addView(input)
-        bottom.addView(Button(this).apply {
-            text = "Gửi"
-            isAllCaps = false
-            setTextColor(Color.WHITE)
-            background = GradientDrawable().apply { cornerRadius = dp(22).toFloat(); setColor(PRIMARY) }
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(44))
-                .apply { leftMargin = dp(8) }
+        bottom.addView(FrameLayout(this).apply {
+            background = circle(PRIMARY)
+            isClickable = true
             setOnClickListener { send() }
-        })
+            addView(ImageView(context).apply {
+                setImageResource(R.drawable.ic_send)
+                setColorFilter(Color.WHITE)
+                layoutParams = FrameLayout.LayoutParams(dp(22), dp(22), Gravity.CENTER)
+            })
+        }, LinearLayout.LayoutParams(dp(50), dp(50)).apply { leftMargin = dp(8) })
         root.addView(bottom)
 
         setContentView(root)
-        applyInsets(root)
+        applyInsets(root, SHEET)
     }
 
-    private fun titleText(): String =
-        if (address.isBlank()) "Tin nhắn mới"
-        else ContactChecker.displayName(this, address) ?: address
+    private fun buildHeader() {
+        header.removeAllViews()
+        header.addView(icon(R.drawable.ic_back) { finish() })
+        if (address.isBlank()) {
+            header.addView(text("Cuộc trò chuyện mới", 22f).apply {
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            })
+            return
+        }
+        val name = ContactChecker.displayName(this, address)
+        header.addView(avatar(name ?: address, name != null, 40))
+        header.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), 0, dp(4), 0)
+            addView(text(name ?: address, 19f).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END })
+            if (name != null) addView(text(address, 13f, TEXT2))
+        }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        if (SenderRule.isPersonalNumber(address)) {
+            header.addView(icon(R.drawable.ic_phone) {
+                startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$address")))
+            })
+        }
+        lateinit var more: View
+        more = icon(R.drawable.ic_more) { showMenu(more) }
+        header.addView(more)
+    }
+
+    private fun showMenu(anchor: View) {
+        val pm = PopupMenu(this, anchor)
+        pm.menu.add(0, 1, 0, "Xoá cuộc trò chuyện")
+        pm.setOnMenuItemClickListener {
+            if (threadId >= 0 && isDefaultSms()) {
+                AlertDialog.Builder(this)
+                    .setTitle("Xoá cuộc trò chuyện?")
+                    .setNegativeButton("Huỷ", null)
+                    .setPositiveButton("Xoá") { _, _ ->
+                        Thread { SmsRepo.deleteThread(this, threadId); runOnUiThread { finish() } }.start()
+                    }
+                    .show()
+            }
+            true
+        }
+        pm.show()
+    }
 
     override fun onResume() {
         super.onResume()
@@ -159,40 +217,51 @@ class ConversationActivity : BaseActivity() {
         }.start()
     }
 
+    private fun dayKey(t: Long): Int {
+        val c = Calendar.getInstance().apply { timeInMillis = t }
+        return c.get(Calendar.YEAR) * 1000 + c.get(Calendar.DAY_OF_YEAR)
+    }
+
     private fun render(msgs: List<SmsRepo.Msg>) {
         msgBox.removeAllViews()
-        val maxW = (resources.displayMetrics.widthPixels * 0.78).toInt()
-        for (m in msgs) {
+        val maxW = (resources.displayMetrics.widthPixels * 0.76).toInt()
+        var lastDay = -1
+        for ((i, m) in msgs.withIndex()) {
+            val dk = dayKey(m.date)
+            if (dk != lastDay) {
+                lastDay = dk
+                msgBox.addView(text(dayLabel(m.date), 13f, TEXT2).apply {
+                    gravity = Gravity.CENTER
+                    setPadding(0, dp(14), 0, dp(8))
+                }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            }
             val out = m.type != Telephony.Sms.MESSAGE_TYPE_INBOX
             val wrap = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = if (out) Gravity.END else Gravity.START
-                setPadding(0, dp(3), 0, dp(3))
+                setPadding(0, dp(2), 0, dp(2))
             }
             wrap.addView(TextView(this).apply {
                 text = m.body
                 textSize = 16f
                 maxWidth = maxW
                 setTextIsSelectable(true)
-                setTextColor(if (out) Color.WHITE else Color.BLACK)
-                setPadding(dp(14), dp(9), dp(14), dp(9))
-                background = GradientDrawable().apply {
-                    cornerRadius = dp(18).toFloat()
-                    setColor(if (out) PRIMARY else GRAY_BG)
-                }
+                setTextColor(if (out) Color.WHITE else TEXT)
+                setPadding(dp(16), dp(10), dp(16), dp(10))
+                background = rounded(if (out) PRIMARY else BUBBLE_IN, 20)
             })
+            val isLast = i == msgs.size - 1 || msgs[i + 1].type != m.type
             val status = when (m.type) {
-                Telephony.Sms.MESSAGE_TYPE_OUTBOX, Telephony.Sms.MESSAGE_TYPE_QUEUED -> " · Đang gửi…"
-                Telephony.Sms.MESSAGE_TYPE_FAILED -> " · ⚠ Gửi lỗi – chạm để gửi lại"
-                else -> ""
+                Telephony.Sms.MESSAGE_TYPE_OUTBOX, Telephony.Sms.MESSAGE_TYPE_QUEUED -> "Đang gửi…"
+                Telephony.Sms.MESSAGE_TYPE_FAILED -> "Không gửi được · Chạm để thử lại"
+                else -> if (isLast) fmtTime(m.date).let { if (it.contains(":")) it else it } else ""
             }
-            wrap.addView(TextView(this).apply {
-                text = fmtTime(m.date) + status
-                textSize = 11f
-                setTextColor(if (m.type == Telephony.Sms.MESSAGE_TYPE_FAILED) Color.RED else GRAY_TEXT)
-                setPadding(dp(6), dp(2), dp(6), 0)
-                if (m.type == Telephony.Sms.MESSAGE_TYPE_FAILED) setOnClickListener { resend(m) }
-            })
+            if (status.isNotEmpty()) {
+                wrap.addView(text(status, 12f, if (m.type == Telephony.Sms.MESSAGE_TYPE_FAILED) 0xFFB3261E.toInt() else TEXT2).apply {
+                    setPadding(dp(8), dp(3), dp(8), dp(4))
+                    if (m.type == Telephony.Sms.MESSAGE_TYPE_FAILED) setOnClickListener { resend(m) }
+                })
+            }
             msgBox.addView(wrap)
         }
         scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
@@ -223,7 +292,7 @@ class ConversationActivity : BaseActivity() {
                     threadId = tid
                     visibleThreadId = tid
                     toRow.visibility = View.GONE
-                    titleView?.text = titleText()
+                    buildHeader()
                 }
                 load()
             }

@@ -31,6 +31,8 @@ class SmsDeliverReceiver : BroadcastReceiver() {
                 if (!SenderRule.shouldBlockSms(app, address)) {
                     val tid = SmsRepo.insertIncoming(app, address, body, sentAt, subId)
                     if (tid >= 0) Notifier.showIncoming(app, tid, address)
+                } else if (Prefs(app).keepBlocked) {
+                    BlockedStore.add(app, address, body, subId)
                 }
             } catch (e: Exception) {
             } finally {

@@ -50,7 +50,8 @@ class SettingsActivity : BaseActivity() {
         root.addView(header("2. Chặn"))
         root.addView(toggle("Chặn cuộc gọi không có trong danh bạ", prefs.blockCalls) { prefs.blockCalls = it })
         root.addView(toggle("Chặn & xoá tin nhắn từ số lạ", prefs.blockSms) { prefs.blockSms = it })
-        root.addView(note("Tin từ brandname (VCB, GHN, Shopee…) và đầu số dịch vụ (9029, 1900xxxx…) luôn được nhận."))
+        root.addView(toggle("Giữ tin bị chặn 7 ngày (xem trong Tin nhắn rác và bị chặn)", prefs.keepBlocked) { prefs.keepBlocked = it })
+        root.addView(note("Tắt = xoá ngay, không lưu lại. Tin từ brandname (VCB, GHN, Shopee…) và đầu số dịch vụ (9029, 1900xxxx…) luôn được nhận."))
 
         root.addView(header("3. Danh sách cho phép"))
         root.addView(note("Số chứa các số dưới đây sẽ KHÔNG bị chặn (cả gọi lẫn tin nhắn). Cách nhau bằng dấu phẩy."))
