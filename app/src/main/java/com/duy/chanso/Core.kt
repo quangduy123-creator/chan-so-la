@@ -22,9 +22,15 @@ class Prefs(ctx: Context) {
         get() = sp.getBoolean("blockSms", true)
         set(v) { sp.edit().putBoolean("blockSms", v).apply() }
 
-    var keepBlocked: Boolean
-        get() = sp.getBoolean("keepBlocked", false)
-        set(v) { sp.edit().putBoolean("keepBlocked", v).apply() }
+    /** Tự xoá tin số lạ khi mở Google Tin nhắn */
+    var autoClean: Boolean
+        get() = sp.getBoolean("autoClean", true)
+        set(v) { sp.edit().putBoolean("autoClean", v).apply() }
+
+    /** -1 chưa biết, 0 Google Tin nhắn còn kêu, 1 đang Im lặng */
+    var smsChannelSilent: Int
+        get() = sp.getInt("smsSilent", -1)
+        set(v) { sp.edit().putInt("smsSilent", v).apply() }
 
     var whitelistRaw: String
         get() = sp.getString("whitelist", "") ?: ""
@@ -83,6 +89,12 @@ object SenderRule {
      * Số cá nhân = số điện thoại thường (0xxx…, +84…, số nước ngoài).
      * KHÔNG phải số cá nhân: brandname có chữ (VCB, GHN, Shopee…) và đầu số dịch vụ ≤ 8 chữ số (9029, 1900xxxx, 8xxx…).
      */
+    /** Chuỗi chỉ gồm số và ký tự định dạng số điện thoại */
+    fun looksLikeNumber(s: String): Boolean {
+        val t = s.trim()
+        return t.count { it.isDigit() } >= 3 && t.all { it.isDigit() || it in "+-() .\u00A0" }
+    }
+
     fun isPersonalNumber(address: String): Boolean {
         if (address.any { it.isLetter() }) return false
         val digits = address.count { it.isDigit() }

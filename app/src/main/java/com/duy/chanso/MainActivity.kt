@@ -2,262 +2,206 @@ package com.duy.chanso
 
 import android.Manifest
 import android.app.AlertDialog
+import android.app.NotificationManager
+import android.app.role.RoleManager
+import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.database.ContentObserver
 import android.graphics.Color
+import android.graphics.Typeface
 import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
+import android.provider.Settings
 import android.provider.Telephony
 import android.view.Gravity
 import android.view.View
-import android.view.ViewGroup
-import android.widget.AbsListView
-import android.widget.BaseAdapter
 import android.widget.Button
-import android.widget.FrameLayout
-import android.widget.ImageView
+import android.widget.EditText
 import android.widget.LinearLayout
-import android.widget.ListView
+import android.widget.ScrollView
+import android.widget.Switch
 import android.widget.TextView
 
-/** Màn hình chính: danh sách cuộc trò chuyện */
+/** Màn hình duy nhất: thiết lập & tuỳ chọn */
 class MainActivity : BaseActivity() {
 
-    private data class Row(val t: SmsRepo.ThreadInfo, val name: String, val contact: Boolean)
-
-    private val rows = ArrayList<Row>()
-    private lateinit var adapter: ThreadAdapter
-    private lateinit var header: LinearLayout
-    private lateinit var banner: LinearLayout
-    private lateinit var miniBar: LinearLayout
-    private lateinit var footerText: TextView
-    private var asked = false
-    private var observing = false
-
-    private val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
-        override fun onChange(selfChange: Boolean) { load() }
-    }
+    private lateinit var prefs: Prefs
+    private lateinit var statusView: TextView
+    private lateinit var defaultSmsBox: LinearLayout
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val root = FrameLayout(this)
+        prefs = Prefs(this)
 
-        val list = ListView(this).apply {
-            divider = null
-            setBackgroundColor(SHEET)
-            isVerticalScrollBarEnabled = false
-        }
-        header = buildHeader()
-        list.addHeaderView(header, null, false)
-        footerText = text("", 15f, TEXT2).apply {
-            gravity = Gravity.CENTER
-            setPadding(dp(24), dp(24), dp(24), dp(120))
-        }
-        list.addFooterView(footerText, null, false)
-        adapter = ThreadAdapter()
-        list.adapter = adapter
-        list.setOnItemClickListener { _, _, pos, _ ->
-            val r = list.getItemAtPosition(pos) as? Row ?: return@setOnItemClickListener
-            startActivity(ConversationActivity.open(this, r.t.id, r.t.address))
-        }
-        list.setOnItemLongClickListener { _, _, pos, _ ->
-            val r = list.getItemAtPosition(pos) as? Row
-            if (r != null) threadOptions(r)
-            true
-        }
-        list.setOnScrollListener(object : AbsListView.OnScrollListener {
-            override fun onScrollStateChanged(view: AbsListView?, scrollState: Int) {}
-            override fun onScroll(view: AbsListView?, first: Int, visible: Int, total: Int) {
-                val collapsed = first > 0 || header.top < -(header.height - dp(110))
-                miniBar.visibility = if (collapsed) View.VISIBLE else View.GONE
-            }
-        })
-        root.addView(list, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        val outer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        outer.addView(topBar("Chặn Số Lạ", false))
 
-        // Thanh nhỏ hiện khi cuộn xuống
-        miniBar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setBackgroundColor(BG_TOP)
-            setPadding(dp(20), dp(4), dp(12), dp(4))
-            visibility = View.GONE
-            addView(text("Tin nhắn", 22f).apply {
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            })
-            addView(icon(R.drawable.ic_search) { openSearch() })
-            addView(accountButton())
-        }
-        root.addView(miniBar, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.TOP))
-
-        // Nút soạn tin (góc dưới phải)
-        val fab = FrameLayout(this).apply {
-            background = rounded(FAB, 18)
-            elevation = dp(3).toFloat()
-            isClickable = true
-            setOnClickListener { startActivity(Intent(this@MainActivity, ConversationActivity::class.java)) }
-            addView(ImageView(context).apply {
-                setImageResource(R.drawable.ic_chat)
-                setColorFilter(0xFF1D2A4D.toInt())
-                layoutParams = FrameLayout.LayoutParams(dp(26), dp(26), Gravity.CENTER)
-            })
-        }
-        root.addView(fab, FrameLayout.LayoutParams(dp(60), dp(60), Gravity.BOTTOM or Gravity.END).apply {
-            setMargins(0, 0, dp(20), dp(24))
-        })
-
-        setContentView(root)
-        applyInsets(root, BG_TOP)
-    }
-
-    private fun buildHeader(): LinearLayout = LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL
-        setBackgroundColor(BG_TOP)
-
-        val titleH = (resources.displayMetrics.heightPixels * 0.24).toInt()
-        addView(FrameLayout(context).apply {
-            addView(text("Tin nhắn", 34f).apply {
-                gravity = Gravity.CENTER
-            }, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
-        }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, titleH))
-
-        banner = LinearLayout(context).apply {
+        val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = rounded(CARD, 24)
-            setPadding(dp(20), dp(16), dp(20), dp(12))
-            addView(text("Chưa là app Tin nhắn mặc định", 16f, TEXT, true))
-            addView(text("Cần đặt mặc định để nhận, gửi và chặn tin nhắn.", 14f, TEXT2).apply {
-                setPadding(0, dp(4), 0, dp(8))
-            })
-            addView(Button(context).apply {
-                text = "Đặt mặc định"
-                isAllCaps = false
-                setTextColor(Color.WHITE)
-                background = rounded(PRIMARY, 20)
-                setOnClickListener { requestSmsRole() }
-            }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(40)))
+            setPadding(dp(16), 0, dp(16), dp(32))
         }
-        addView(banner, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-            setMargins(dp(16), 0, dp(16), dp(12))
+        outer.addView(ScrollView(this).apply {
+            addView(root)
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
         })
 
-        addView(LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.END or Gravity.CENTER_VERTICAL
-            setPadding(dp(8), 0, dp(14), dp(8))
-            addView(icon(R.drawable.ic_search) { openSearch() })
-            addView(accountButton())
-        })
+        // Cảnh báo nếu app này vẫn đang là app SMS mặc định (từ bản cũ)
+        defaultSmsBox = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = rounded(0xFFFDECEA.toInt(), 20)
+            setPadding(dp(16), dp(14), dp(16), dp(10))
+            addView(text("Hãy chọn lại Google Tin nhắn làm app SMS mặc định", 15f, 0xFF8C1D18.toInt(), true))
+            addView(button("Mở cài đặt ứng dụng mặc định") {
+                startActivity(Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS))
+            })
+        }
+        root.addView(defaultSmsBox, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
 
-        // Mép trên bo tròn của khung danh sách
-        addView(View(context).apply { background = topRounded(SHEET, 28) },
-            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(28)))
+        root.addView(header("1. Thiết lập (làm 1 lần)"))
+        statusView = TextView(this).apply {
+            textSize = 14f; setTextColor(TEXT); setPadding(0, dp(4), 0, dp(8)); setLineSpacing(0f, 1.25f)
+        }
+        root.addView(statusView)
+        root.addView(button("① Cấp quyền Danh bạ, Nhật ký cuộc gọi, Thông báo") { requestBasicPermissions() })
+        root.addView(button("② Đặt làm app chặn cuộc gọi") { requestCallScreeningRole() })
+        root.addView(button("③ Bật quyền đọc thông báo") {
+            startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+        })
+        root.addView(button("④ Để thông báo Google Tin nhắn ở chế độ Im lặng") { openGmNotificationSettings() })
+        root.addView(note("Chọn mục thông báo tin nhắn đến → \"Im lặng\". KHÔNG tắt hẳn. Tin từ danh bạ sẽ do app này báo chuông, tin số lạ sẽ không kêu."))
+        root.addView(button("⑤ Bật Trợ năng \"Chặn Số Lạ\" (tự xoá tin lạ)") {
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        })
+        root.addView(note("Vào Ứng dụng đã cài đặt → Chặn Số Lạ → Bật. Nếu bị khoá: Cài đặt > Ứng dụng > Chặn Số Lạ > ⋮ > Cho phép cài đặt bị hạn chế."))
+
+        root.addView(header("2. Chặn"))
+        root.addView(toggle("Chặn cuộc gọi không có trong danh bạ", prefs.blockCalls) { prefs.blockCalls = it })
+        root.addView(toggle("Ẩn thông báo tin nhắn từ số lạ", prefs.blockSms) { prefs.blockSms = it })
+        root.addView(toggle("Tự xoá tin số lạ khi mở Google Tin nhắn", prefs.autoClean) { prefs.autoClean = it })
+        root.addView(note("Tin từ brandname (VCB, GHN, Shopee…) và đầu số dịch vụ (9029, 1900xxxx…) luôn được giữ."))
+
+        root.addView(header("3. Danh sách cho phép"))
+        root.addView(note("Số chứa các số dưới đây sẽ KHÔNG bị chặn (cả gọi lẫn tin nhắn). Cách nhau bằng dấu phẩy."))
+        val wl = EditText(this).apply { setText(prefs.whitelistRaw); hint = "VD: 1900, 1800"; minLines = 2 }
+        root.addView(wl)
+        root.addView(button("Lưu danh sách cho phép") { prefs.whitelistRaw = wl.text.toString(); toast("Đã lưu") })
+
+        root.addView(header("4. Dọn lịch sử cuộc gọi"))
+        root.addView(button("Xoá lịch sử cuộc gọi cũ từ số lạ") { confirmPurgeCalls() })
+
+        setContentView(outer)
+        applyInsets(outer)
     }
-
-    /** Nút tròn góc phải (mở menu) */
-    private fun accountButton(): View = FrameLayout(this).apply {
-        background = circle(SLATE)
-        isClickable = true
-        setOnClickListener { startActivity(Intent(this@MainActivity, MenuActivity::class.java)) }
-        addView(ImageView(context).apply {
-            setImageResource(R.drawable.ic_shield)
-            setColorFilter(Color.WHITE)
-            layoutParams = FrameLayout.LayoutParams(dp(22), dp(22), Gravity.CENTER)
-        })
-        layoutParams = LinearLayout.LayoutParams(dp(42), dp(42)).apply { leftMargin = dp(6) }
-    }
-
-    private fun openSearch() = startActivity(Intent(this, SearchActivity::class.java))
 
     override fun onResume() {
         super.onResume()
-        val def = isDefaultSms()
-        banner.visibility = if (def) View.GONE else View.VISIBLE
-        if (def) {
-            askPermissionsOnce()
-            if (!observing) {
-                contentResolver.registerContentObserver(Telephony.Sms.CONTENT_URI, true, observer)
-                observing = true
-            }
-            ContactChecker.clearCache()
+        refreshStatus()
+    }
+
+    private fun refreshStatus() {
+        fun granted(p: String) = checkSelfPermission(p) == PackageManager.PERMISSION_GRANTED
+        val contacts = granted(Manifest.permission.READ_CONTACTS)
+        val notif = Build.VERSION.SDK_INT < 33 || granted(Manifest.permission.POST_NOTIFICATIONS)
+        val role = getSystemService(RoleManager::class.java)?.isRoleHeld(RoleManager.ROLE_CALL_SCREENING) == true
+        val listener = getSystemService(NotificationManager::class.java)
+            ?.isNotificationListenerAccessGranted(ComponentName(this, SmsFilterService::class.java)) == true
+        val acc = isAccessibilityOn()
+        val silent = when (prefs.smsChannelSilent) {
+            1 -> "✅ Google Tin nhắn đang Im lặng"
+            0 -> "❌ Google Tin nhắn vẫn đang kêu (tin lạ có thể kêu 1 tiếng)"
+            else -> "⏳ Google Tin nhắn: chưa xác định (cập nhật khi có tin mới)"
         }
-        load()
+        fun mark(ok: Boolean) = if (ok) "✅" else "❌"
+        statusView.text = buildString {
+            appendLine("${mark(contacts)} Quyền đọc danh bạ")
+            appendLine("${mark(notif)} Quyền gửi thông báo")
+            appendLine("${mark(role)} App chặn cuộc gọi")
+            appendLine("${mark(listener)} Quyền đọc thông báo")
+            appendLine(silent)
+            appendLine("${mark(acc)} Trợ năng tự xoá tin lạ")
+            append("${mark(CallLogCleaner.canWrite(this@MainActivity))} Quyền nhật ký cuộc gọi (tuỳ chọn)")
+        }
+        defaultSmsBox.visibility =
+            if (Telephony.Sms.getDefaultSmsPackage(this) == packageName) View.VISIBLE else View.GONE
     }
 
-    override fun onPause() {
-        super.onPause()
-        if (observing) { contentResolver.unregisterContentObserver(observer); observing = false }
+    private fun isAccessibilityOn(): Boolean {
+        val enabled = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: return false
+        val me = ComponentName(this, CleanerService::class.java)
+        return enabled.split(':').any {
+            ComponentName.unflattenFromString(it)?.let { c -> c.packageName == me.packageName && c.className == me.className } == true
+        }
     }
 
-    private fun askPermissionsOnce() {
-        if (asked) return
-        asked = true
-        val need = mutableListOf(Manifest.permission.READ_CONTACTS, Manifest.permission.READ_PHONE_STATE)
-        if (Build.VERSION.SDK_INT >= 33) need.add(Manifest.permission.POST_NOTIFICATIONS)
-        val missing = need.filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
-        if (missing.isNotEmpty()) requestPermissions(missing.toTypedArray(), 1)
+    private fun openGmNotificationSettings() {
+        val i = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, CleanerService.GM)
+        try { startActivity(i) } catch (e: Exception) { startActivity(Intent(Settings.ACTION_SETTINGS)) }
+    }
+
+    private fun requestBasicPermissions() {
+        val perms = mutableListOf(
+            Manifest.permission.READ_CONTACTS,
+            Manifest.permission.READ_CALL_LOG,
+            Manifest.permission.WRITE_CALL_LOG
+        )
+        if (Build.VERSION.SDK_INT >= 33) perms.add(Manifest.permission.POST_NOTIFICATIONS)
+        requestPermissions(perms.toTypedArray(), 1)
+    }
+
+    private fun requestCallScreeningRole() {
+        val rm = getSystemService(RoleManager::class.java)
+        if (rm == null || !rm.isRoleAvailable(RoleManager.ROLE_CALL_SCREENING)) { toast("Máy không hỗ trợ vai trò chặn cuộc gọi"); return }
+        if (rm.isRoleHeld(RoleManager.ROLE_CALL_SCREENING)) { toast("Đã là app chặn cuộc gọi"); return }
+        @Suppress("DEPRECATION")
+        startActivityForResult(rm.createRequestRoleIntent(RoleManager.ROLE_CALL_SCREENING), REQ_ROLE_CALL)
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        refreshStatus()
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        ContactChecker.clearCache()
-        load()
-    }
-
-    private fun load() {
-        if (checkSelfPermission(Manifest.permission.READ_SMS) != PackageManager.PERMISSION_GRANTED) {
-            footerText.text = ""
-            return
+        refreshStatus()
+        if (!CallLogCleaner.canWrite(this)) {
+            toast("Nếu quyền Nhật ký cuộc gọi bị khoá: Cài đặt > Ứng dụng > Chặn Số Lạ > ⋮ > Cho phép cài đặt bị hạn chế")
         }
-        Thread {
-            val data = try {
-                SmsRepo.threads(this).map { t ->
-                    val n = ContactChecker.displayName(this, t.address)
-                    Row(t, n ?: t.address.ifBlank { "(Không rõ)" }, n != null)
-                }
-            } catch (e: Exception) { emptyList() }
-            runOnUiThread {
-                rows.clear(); rows.addAll(data)
-                adapter.notifyDataSetChanged()
-                footerText.text = if (rows.isEmpty()) "Chưa có cuộc trò chuyện nào" else ""
-            }
-        }.start()
     }
 
-    private fun threadOptions(r: Row) {
+    private fun confirmPurgeCalls() {
+        if (!CallLogCleaner.canWrite(this)) { toast("Cần cấp quyền Nhật ký cuộc gọi trước"); return }
         AlertDialog.Builder(this)
-            .setTitle(r.name)
-            .setItems(arrayOf("Đánh dấu đã đọc", "Xoá cuộc trò chuyện")) { _, which ->
-                if (!isDefaultSms()) { toast("Cần đặt làm app Tin nhắn mặc định trước"); return@setItems }
-                when (which) {
-                    0 -> Thread { SmsRepo.markRead(this, r.t.id); Notifier.cancel(this, r.t.id) }.start()
-                    1 -> confirmDelete(r)
-                }
-            }
-            .show()
-    }
-
-    private fun confirmDelete(r: Row) {
-        AlertDialog.Builder(this)
-            .setTitle("Xoá cuộc trò chuyện?")
-            .setMessage("Xoá toàn bộ tin nhắn với ${r.name}.")
+            .setTitle("Xoá lịch sử cuộc gọi từ số lạ?")
+            .setMessage("Mọi cuộc gọi cũ từ số không có trong danh bạ sẽ bị xoá khỏi lịch sử. Không hoàn tác được.")
             .setNegativeButton("Huỷ", null)
             .setPositiveButton("Xoá") { _, _ ->
-                Thread { SmsRepo.deleteThread(this, r.t.id); runOnUiThread { load() } }.start()
+                Thread {
+                    val n = try { CallLogCleaner.purgeUnknown(this) } catch (e: Exception) { -1 }
+                    runOnUiThread { toast(if (n >= 0) "Đã xoá $n mục" else "Không xoá được (thiếu quyền)") }
+                }.start()
             }
             .show()
     }
 
-    private inner class ThreadAdapter : BaseAdapter() {
-        override fun getCount() = rows.size
-        override fun getItem(position: Int): Any = rows[position]
-        override fun getItemId(position: Int) = rows[position].t.id
-        override fun getView(position: Int, convertView: View?, parent: ViewGroup?): View {
-            val r = rows[position]
-            val prefix = if (r.t.lastType != Telephony.Sms.MESSAGE_TYPE_INBOX) "Bạn: " else ""
-            return threadRow(r.name, prefix + r.t.snippet, fmtTime(r.t.date), r.t.unread, r.contact)
-        }
+    private fun header(t: String) = TextView(this).apply {
+        text = t; textSize = 17f; setTextColor(TEXT); setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL))
+        setPadding(0, dp(20), 0, dp(6))
+    }
+
+    private fun note(t: String) = TextView(this).apply {
+        text = t; textSize = 13f; setTextColor(GRAY_TEXT); setPadding(0, dp(2), 0, dp(6))
+    }
+
+    private fun button(t: String, onClick: () -> Unit) = Button(this).apply {
+        text = t; isAllCaps = false; gravity = Gravity.START or Gravity.CENTER_VERTICAL
+        setOnClickListener { onClick() }
+    }
+
+    private fun toggle(t: String, initial: Boolean, onChange: (Boolean) -> Unit) = Switch(this).apply {
+        text = t; isChecked = initial; textSize = 15f; setTextColor(Color.BLACK)
+        setPadding(0, dp(8), 0, dp(8))
+        setOnCheckedChangeListener { _, checked -> onChange(checked) }
     }
 }

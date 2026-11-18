@@ -1,100 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <uses-feature android:name="android.hardware.telephony" android:required="false" />
-
     <uses-permission android:name="android.permission.READ_CONTACTS" />
     <uses-permission android:name="android.permission.READ_CALL_LOG" />
     <uses-permission android:name="android.permission.WRITE_CALL_LOG" />
-    <uses-permission android:name="android.permission.READ_SMS" />
-    <uses-permission android:name="android.permission.SEND_SMS" />
-    <uses-permission android:name="android.permission.RECEIVE_SMS" />
-    <uses-permission android:name="android.permission.RECEIVE_MMS" />
-    <uses-permission android:name="android.permission.RECEIVE_WAP_PUSH" />
-    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <queries>
+        <package android:name="com.google.android.apps.messaging" />
+    </queries>
 
     <application
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
-        android:label="Tin nhắn"
+        android:label="Chặn Số Lạ"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
 
-        <!-- Danh sách cuộc trò chuyện -->
         <activity
             android:name=".MainActivity"
-            android:exported="true"
-            android:launchMode="singleTask">
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
-                <category android:name="android.intent.category.APP_MESSAGING" />
             </intent-filter>
         </activity>
-
-        <!-- Màn hình chat; nhận lệnh "gửi tin tới số…" từ app khác -->
-        <activity
-            android:name=".ConversationActivity"
-            android:exported="true"
-            android:windowSoftInputMode="adjustResize">
-            <intent-filter>
-                <action android:name="android.intent.action.SENDTO" />
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="sms" />
-                <data android:scheme="smsto" />
-                <data android:scheme="mms" />
-                <data android:scheme="mmsto" />
-            </intent-filter>
-        </activity>
-
-        <activity android:name=".SettingsActivity" android:exported="false" />
-        <activity android:name=".MenuActivity" android:exported="false" />
-        <activity android:name=".BlockedActivity" android:exported="false" />
-        <activity
-            android:name=".SearchActivity"
-            android:exported="false"
-            android:windowSoftInputMode="stateVisible|adjustResize" />
-
-        <!-- Nhận SMS (chỉ app mặc định) -->
-        <receiver
-            android:name=".SmsDeliverReceiver"
-            android:exported="true"
-            android:permission="android.permission.BROADCAST_SMS">
-            <intent-filter>
-                <action android:name="android.provider.Telephony.SMS_DELIVER" />
-            </intent-filter>
-        </receiver>
-
-        <!-- Nhận MMS (bắt buộc để được làm app mặc định) -->
-        <receiver
-            android:name=".MmsReceiver"
-            android:exported="true"
-            android:permission="android.permission.BROADCAST_WAP_PUSH">
-            <intent-filter>
-                <action android:name="android.provider.Telephony.WAP_PUSH_DELIVER" />
-                <data android:mimeType="application/vnd.wap.mms-message" />
-            </intent-filter>
-        </receiver>
-
-        <receiver android:name=".SentReceiver" android:exported="false" />
-        <receiver android:name=".NotifActionReceiver" android:exported="false" />
-
-        <!-- Trả lời nhanh khi từ chối cuộc gọi -->
-        <service
-            android:name=".RespondService"
-            android:exported="true"
-            android:permission="android.permission.SEND_RESPOND_VIA_MESSAGE">
-            <intent-filter>
-                <action android:name="android.intent.action.RESPOND_VIA_MESSAGE" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:scheme="sms" />
-                <data android:scheme="smsto" />
-                <data android:scheme="mms" />
-                <data android:scheme="mmsto" />
-            </intent-filter>
-        </service>
 
         <!-- Chặn cuộc gọi -->
         <service
@@ -104,6 +33,31 @@
             <intent-filter>
                 <action android:name="android.telecom.CallScreeningService" />
             </intent-filter>
+        </service>
+
+        <!-- Gỡ thông báo tin lạ (chạy ngầm) -->
+        <service
+            android:name=".SmsFilterService"
+            android:exported="true"
+            android:label="Chặn Số Lạ – lọc thông báo"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
+        <!-- Tự xoá tin lạ khi mở Google Tin nhắn -->
+        <service
+            android:name=".CleanerService"
+            android:exported="true"
+            android:label="Chặn Số Lạ"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_cleaner" />
         </service>
     </application>
 </manifest>
