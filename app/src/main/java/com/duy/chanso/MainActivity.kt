@@ -87,6 +87,8 @@ class MainActivity : BaseActivity() {
         root.addView(wl)
         root.addView(button("Lưu danh sách cho phép") { prefs.whitelistRaw = wl.text.toString(); toast("Đã lưu") })
 
+        root.addView(button("Gửi log lỗi tự xoá (để sửa app)") { shareDump() })
+
         root.addView(header("4. Dọn lịch sử cuộc gọi"))
         root.addView(button("Xoá lịch sử cuộc gọi cũ từ số lạ") { confirmPurgeCalls() })
 
@@ -169,6 +171,13 @@ class MainActivity : BaseActivity() {
         if (!CallLogCleaner.canWrite(this)) {
             toast("Nếu quyền Nhật ký cuộc gọi bị khoá: Cài đặt > Ứng dụng > Chặn Số Lạ > ⋮ > Cho phép cài đặt bị hạn chế")
         }
+    }
+
+    private fun shareDump() {
+        val f = java.io.File(filesDir, "last_dump.txt")
+        if (!f.exists()) { toast("Chưa có log lỗi"); return }
+        val i = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, f.readText().take(60000))
+        startActivity(Intent.createChooser(i, "Gửi log"))
     }
 
     private fun confirmPurgeCalls() {

@@ -1,6 +1,9 @@
 package com.duy.chanso
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.GestureDescription
+import android.graphics.Path
+import android.graphics.Rect
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -35,7 +38,21 @@ class CleanerService : AccessibilityService() {
             if (s == null) return ""
             val n = java.text.Normalizer.normalize(s.toString(), java.text.Normalizer.Form.NFD)
             return n.replace(Regex("\\p{Mn}+"), "").replace('đ', 'd').replace('Đ', 'D')
-                .lowercase().trim().trimEnd('?', '.', '!', ' ')
+                .replace(Regex("\\s+"), " ").lowercase().trim().trimEnd('?', '.', '!', ' ')
+        }
+
+        /** Nút xác nhận: khớp chính xác, hoặc nhãn ngắn có "thung rac"/"trash" (tiêu đề hộp thoại dài hơn nên không khớp) */
+        fun isConfirmLabel(s: CharSequence?): Boolean {
+            val p = plain(s)
+            if (p.isEmpty()) return false
+            if (p in CONFIRM_LABELS) return true
+            return p.length <= 26 && (p.contains("thung rac") || p.contains("trash")) && !p.startsWith("huy")
+        }
+
+        /** Tiêu đề hộp thoại xác nhận (để biết hộp thoại còn mở không) */
+        fun isConfirmTitle(s: CharSequence?): Boolean {
+            val p = plain(s)
+            return p.length > 26 && (p.contains("thung rac") || p.contains("trash"))
         }
 
         fun isDeleteLabel(s: CharSequence?): Boolean {
@@ -170,20 +187,73 @@ class CleanerService : AccessibilityService() {
 
     // ---------- Bước 3: bấm "Chuyển vào thùng rác" trong hộp thoại ----------
     private fun confirm(number: String, attempt: Int) {
-        val btn = gmRoots().asSequence().flatMap { root ->
-            findAll(root) { n -> plain(n.text) in CONFIRM_LABELS || plain(n.contentDescription) in CONFIRM_LABELS }.asSequence()
-        }.lastOrNull()
+        val btn = findConfirmButton()
         if (btn == null) {
-            if (attempt < 5) { handler.postDelayed({ confirm(number, attempt + 1) }, 300); return }
-            // Không thấy hộp thoại: có thể đã xoá luôn; nếu chưa thì sau 2 lần sẽ bỏ qua số này
+            if (attempt < 6) { handler.postDelayed({ confirm(number, attempt + 1) }, 300); return }
+            dump("Không thấy nút xác nhận")
             markFailed(number)
-            deletedThisSession++
+            performGlobalAction(GLOBAL_ACTION_BACK)
             return finish(true)
         }
         click(btn)
-        deletedThisSession++
-        failed.remove(number)
-        finish(true)
+        // Nếu hộp thoại vẫn còn -> chạm thẳng vào toạ độ nút
+        handler.postDelayed({
+            if (dialogStillOpen()) {
+                findConfirmButton()?.let { tap(it) }
+                handler.postDelayed({
+                    if (dialogStillOpen()) {
+                        dump("Đã bấm nhưng hộp thoại vẫn mở")
+                        markFailed(number)
+                        performGlobalAction(GLOBAL_ACTION_BACK)
+                    } else {
+                        deletedThisSession++; failed.remove(number)
+                    }
+                    finish(true)
+                }, 500)
+            } else {
+                deletedThisSession++; failed.remove(number)
+                finish(true)
+            }
+        }, 450)
+    }
+
+    private fun findConfirmButton(): AccessibilityNodeInfo? =
+        gmRoots().asSequence().flatMap { root ->
+            findAll(root) { n -> isConfirmLabel(n.text) || isConfirmLabel(n.contentDescription) }.asSequence()
+        }.lastOrNull()
+
+    private fun dialogStillOpen(): Boolean =
+        gmRoots().any { root -> findAll(root) { n -> isConfirmTitle(n.text) }.isNotEmpty() }
+
+    /** Chạm vào giữa nút như ngón tay thật */
+    private fun tap(n: AccessibilityNodeInfo) {
+        val r = Rect()
+        (clickableOf(n) ?: n).getBoundsInScreen(r)
+        if (r.isEmpty) return
+        val path = Path().apply { moveTo(r.exactCenterX(), r.exactCenterY()) }
+        val g = GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0, 60)).build()
+        try { dispatchGesture(g, null, null) } catch (e: Exception) { }
+    }
+
+    /** Ghi cấu trúc màn hình khi lỗi, để gửi cho người sửa app */
+    private fun dump(reason: String) {
+        try {
+            val sb = StringBuilder("$reason @ ${java.util.Date()}\n")
+            try {
+                windows.forEach { w ->
+                    sb.append("== window type=${w.type} title=${w.title} pkg=${w.root?.packageName}\n")
+                    w.root?.let { root ->
+                        findAll(root) { true }.take(400).forEach { n ->
+                            val b = Rect(); n.getBoundsInScreen(b)
+                            if (n.text != null || n.contentDescription != null || n.isClickable) {
+                                sb.append("${n.className?.toString()?.substringAfterLast('.')} t=\"${n.text}\" d=\"${n.contentDescription}\" id=${n.viewIdResourceName} click=${n.isClickable} ${b.toShortString()}\n")
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) { sb.append("err $e\n") }
+            java.io.File(filesDir, "last_dump.txt").writeText(sb.toString())
+        } catch (e: Exception) { }
     }
 
     private fun click(n: AccessibilityNodeInfo) {

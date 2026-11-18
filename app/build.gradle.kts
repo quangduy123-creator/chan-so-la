@@ -11,8 +11,8 @@ android {
         applicationId = "com.duy.chanso"
         minSdk = 29          // Android 10+ (cần cho CallScreeningService)
         targetSdk = 35
-        versionCode = 9
-        versionName = "3.3"
+        versionCode = 10
+        versionName = "3.4"
     }
     // Khoá ký cố định để các bản sau cài đè được, không phải gỡ app
     signingConfigs {
