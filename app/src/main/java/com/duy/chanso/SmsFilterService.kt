@@ -92,6 +92,7 @@ class SmsFilterService : NotificationListenerService() {
 
         fireAction(n, Notification.Action.SEMANTIC_ACTION_MARK_AS_READ, listOf("đã đọc", "mark as read"))
         cancelNotification(sbn.key)
+        prefs.pendingClean = true
     }
 
     private fun channelImportance(sbn: StatusBarNotification): Int = try {

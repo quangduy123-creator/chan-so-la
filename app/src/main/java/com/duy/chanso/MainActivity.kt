@@ -78,6 +78,7 @@ class MainActivity : BaseActivity() {
         root.addView(toggle("Chặn cuộc gọi không có trong danh bạ", prefs.blockCalls) { prefs.blockCalls = it })
         root.addView(toggle("Ẩn thông báo tin nhắn từ số lạ", prefs.blockSms) { prefs.blockSms = it })
         root.addView(toggle("Tự xoá tin số lạ khi mở Google Tin nhắn", prefs.autoClean) { prefs.autoClean = it })
+        root.addView(toggle("Dọn ngay khi mở khoá máy (chỉ khi có tin lạ mới)", prefs.cleanOnUnlock) { prefs.cleanOnUnlock = it })
         root.addView(note("Tin từ brandname (VCB, GHN, Shopee…) và đầu số dịch vụ (9029, 1900xxxx…) luôn được giữ."))
 
         root.addView(header("3. Danh sách cho phép"))

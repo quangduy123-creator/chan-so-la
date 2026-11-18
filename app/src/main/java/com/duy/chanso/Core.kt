@@ -27,6 +27,16 @@ class Prefs(ctx: Context) {
         get() = sp.getBoolean("autoClean", true)
         set(v) { sp.edit().putBoolean("autoClean", v).apply() }
 
+    /** Tự mở Google Tin nhắn để dọn ngay khi mở khoá (chỉ khi có tin lạ mới) */
+    var cleanOnUnlock: Boolean
+        get() = sp.getBoolean("cleanOnUnlock", true)
+        set(v) { sp.edit().putBoolean("cleanOnUnlock", v).apply() }
+
+    /** Có tin lạ mới chưa được dọn */
+    var pendingClean: Boolean
+        get() = sp.getBoolean("pendingClean", false)
+        set(v) { sp.edit().putBoolean("pendingClean", v).apply() }
+
     /** -1 chưa biết, 0 Google Tin nhắn còn kêu, 1 đang Im lặng */
     var smsChannelSilent: Int
         get() = sp.getInt("smsSilent", -1)
